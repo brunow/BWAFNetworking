@@ -31,6 +31,8 @@ typedef void(^BWAFNetworkingSuccessDeleteObjectBlock)(id object);
 
 + (id)sharedClient;
 
+- (void)cancelAllOperations;
+
 - (NSURL *)baseURL;
 
 - (NSString *)path;
