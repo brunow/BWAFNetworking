@@ -1,18 +1,9 @@
 //
-// Created by Bruno Wernimont on 2012
-// Copyright 2012 BWAFNetworking
+//  BWAFNetworking.m
+//  Notepad
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//    http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+//  Created by Bruno Wernimont on 19/07/12.
+//  Copyright (c) 2012 __MyCompanyName__. All rights reserved.
 //
 
 #import "BWAFNetworking.h"
@@ -68,12 +59,6 @@
 }
 
 
-///////////////////////////////////////////////////////////////////////////////////////////////////
-- (void)cancelAllOperations {
-    [self.operationQueue cancelAllOperations];
-}
-
-
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 - (id)initWithBaseURL:(NSURL *)url {
     self = [super initWithBaseURL:[self baseURL]];
@@ -90,29 +75,18 @@
 - (void)allObjects:(Class)objectClass
            success:(BWAFNetworkingAllObjectsSuccessBlock)success
            failure:(void (^)(AFHTTPRequestOperation *operation, NSError *error))failure {
-    [self allObjects:objectClass params:nil success:success failure:failure];
+    
+    [self allObjects:objectClass fromObject:nil params:nil success:success failure:failure];
 }
 
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 - (void)allObjects:(Class)objectClass
-        params:(NSDictionary *)params
+            params:(NSDictionary *)params
            success:(BWAFNetworkingAllObjectsSuccessBlock)success
            failure:(void (^)(AFHTTPRequestOperation *operation, NSError *error))failure {
     
-    NSString *path = [[BWObjectRouter shared] resourcePathForMethod:BWObjectRouterMethodINDEX
-                                                    withObjectClass:objectClass];
-    
-    [self getPath:path
-       parameters:[self paramsWithParams:params]
-          success:^(AFHTTPRequestOperation *operation, id responseObject) {
-              NSArray *objectsFromJSON = [[BWObjectMapper shared] objectsFromJSON:responseObject
-                                                                  withObjectClass:objectClass];
-              
-              if (nil != success)
-                  success(objectsFromJSON);
-              
-          } failure:failure];
+    [self allObjects:objectClass fromObject:nil params:params success:success failure:failure];
 }
 
 
@@ -121,8 +95,10 @@
         fromObject:(id)object
            success:(BWAFNetworkingAllObjectsSuccessBlock)success
            failure:(void (^)(AFHTTPRequestOperation *operation, NSError *error))failure {
+    
     [self allObjects:objectClass fromObject:object params:nil success:success failure:failure];
 }
+
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 - (void)allObjects:(Class)objectClass
@@ -131,12 +107,19 @@
            success:(BWAFNetworkingAllObjectsSuccessBlock)success
            failure:(void (^)(AFHTTPRequestOperation *operation, NSError *error))failure {
     
-    NSString *path = [[BWObjectRouter shared] resourcePathForMethod:BWObjectRouterMethodINDEX
-                                                    withObjectClass:objectClass
-                                                        valueObject:object];
+    NSString *path = nil;
+    
+    if (nil == object) {
+        path = [[BWObjectRouter shared] resourcePathForMethod:BWObjectRouterMethodINDEX
+                                              withObjectClass:objectClass];
+    } else {
+        path = [[BWObjectRouter shared] resourcePathForMethod:BWObjectRouterMethodINDEX
+                                              withObjectClass:objectClass
+                                                  valueObject:object];
+    }
     
     [self getPath:path
-       parameters:[self paramsWithParams:params]
+       parameters:(params != nil) ? [self paramsWithParams:params] : [self params]
           success:^(AFHTTPRequestOperation *operation, id responseObject) {
               NSArray *objectsFromJSON = [[BWObjectMapper shared] objectsFromJSON:responseObject
                                                                   withObjectClass:objectClass];
@@ -222,7 +205,7 @@
     
     NSString *path = [[BWObjectRouter shared] resourcePathForMethod:BWObjectRouterMethodPUT
                                                          withObject:object];
-
+    
     NSDictionary *params = [[BWObjectSerializer shared] serializeObject:object];
     
     [self putPath:path
@@ -250,7 +233,7 @@
      parameters:(NSDictionary *)parameters
         success:(void (^)(AFHTTPRequestOperation *operation, id responseObject))success
         failure:(void (^)(AFHTTPRequestOperation *operation, NSError *error))failure {
-
+    
     [super getPath:[self fullPath:path]
         parameters:[self paramsWithParams:parameters]
            success:success
@@ -305,22 +288,14 @@
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 - (NSString *)fullPath:(NSString *)path {
-    if (nil == [self path]) {
-        return path;
-    }
-    
     return [NSString stringWithFormat:@"%@%@", [self path], path];
 }
 
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-- (NSDictionary *)paramsWithParams:(NSDictionary *)params {    
+- (NSDictionary *)paramsWithParams:(NSDictionary *)params {
     NSMutableDictionary *allParams = [NSMutableDictionary dictionary];
-    
-    if (nil != params) {
-        [allParams addEntriesFromDictionary:params];
-    }
-    
+    [allParams addEntriesFromDictionary:params];
     [allParams addEntriesFromDictionary:[self params]];
     
     return allParams;
