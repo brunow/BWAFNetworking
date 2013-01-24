@@ -90,12 +90,21 @@
 - (void)allObjects:(Class)objectClass
            success:(BWAFNetworkingAllObjectsSuccessBlock)success
            failure:(void (^)(AFHTTPRequestOperation *operation, NSError *error))failure {
+    [self allObjects:objectClass params:nil success:success failure:failure];
+}
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+- (void)allObjects:(Class)objectClass
+        params:(NSDictionary *)params
+           success:(BWAFNetworkingAllObjectsSuccessBlock)success
+           failure:(void (^)(AFHTTPRequestOperation *operation, NSError *error))failure {
     
     NSString *path = [[BWObjectRouter shared] resourcePathForMethod:BWObjectRouterMethodINDEX
                                                     withObjectClass:objectClass];
     
     [self getPath:path
-       parameters:[self params]
+       parameters:[self paramsWithParams:params]
           success:^(AFHTTPRequestOperation *operation, id responseObject) {
               NSArray *objectsFromJSON = [[BWObjectMapper shared] objectsFromJSON:responseObject
                                                                   withObjectClass:objectClass];
@@ -112,13 +121,22 @@
         fromObject:(id)object
            success:(BWAFNetworkingAllObjectsSuccessBlock)success
            failure:(void (^)(AFHTTPRequestOperation *operation, NSError *error))failure {
+    [self allObjects:objectClass fromObject:object params:nil success:success failure:failure];
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+- (void)allObjects:(Class)objectClass
+        fromObject:(id)object
+            params:(NSDictionary *)params
+           success:(BWAFNetworkingAllObjectsSuccessBlock)success
+           failure:(void (^)(AFHTTPRequestOperation *operation, NSError *error))failure {
     
     NSString *path = [[BWObjectRouter shared] resourcePathForMethod:BWObjectRouterMethodINDEX
                                                     withObjectClass:objectClass
                                                         valueObject:object];
     
     [self getPath:path
-       parameters:[self params]
+       parameters:[self paramsWithParams:params]
           success:^(AFHTTPRequestOperation *operation, id responseObject) {
               NSArray *objectsFromJSON = [[BWObjectMapper shared] objectsFromJSON:responseObject
                                                                   withObjectClass:objectClass];
@@ -298,7 +316,11 @@
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 - (NSDictionary *)paramsWithParams:(NSDictionary *)params {    
     NSMutableDictionary *allParams = [NSMutableDictionary dictionary];
-    [allParams addEntriesFromDictionary:params];
+    
+    if (nil != params) {
+        [allParams addEntriesFromDictionary:params];
+    }
+    
     [allParams addEntriesFromDictionary:[self params]];
     
     return allParams;

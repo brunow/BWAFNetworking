@@ -44,7 +44,18 @@ typedef void(^BWAFNetworkingSuccessDeleteObjectBlock)(id object);
            failure:(void (^)(AFHTTPRequestOperation *operation, NSError *error))failure;
 
 - (void)allObjects:(Class)objectClass
+            params:(NSDictionary *)params
+           success:(BWAFNetworkingAllObjectsSuccessBlock)success
+           failure:(void (^)(AFHTTPRequestOperation *operation, NSError *error))failure;
+
+- (void)allObjects:(Class)objectClass
         fromObject:(id)object
+           success:(BWAFNetworkingAllObjectsSuccessBlock)success
+           failure:(void (^)(AFHTTPRequestOperation *operation, NSError *error))failure;
+
+- (void)allObjects:(Class)objectClass
+        fromObject:(id)object
+            params:(NSDictionary *)params
            success:(BWAFNetworkingAllObjectsSuccessBlock)success
            failure:(void (^)(AFHTTPRequestOperation *operation, NSError *error))failure;
 
