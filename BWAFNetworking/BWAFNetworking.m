@@ -21,6 +21,18 @@
 #import "BWObjectSerializer.h"
 #import "BWObjectMapper.h"
 
+typedef id (^BWAFResultReturnBlock)(void);
+typedef void (^BWAFResultBlock)(id result);
+
+static dispatch_queue_t bwaf_parsing_operation_queue;
+static dispatch_queue_t parsing_operation_queue() {
+    if (bwaf_parsing_operation_queue == NULL) {
+        bwaf_parsing_operation_queue = dispatch_queue_create("com.bwafnetworking.parsing", 0);
+    }
+    
+    return bwaf_parsing_operation_queue;
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -130,11 +142,16 @@
     [self getPath:path
        parameters:(params != nil) ? [self paramsWithParams:params] : [self params]
           success:^(AFHTTPRequestOperation *operation, id responseObject) {
-              NSArray *objectsFromJSON = [[BWObjectMapper shared] objectsFromJSON:responseObject
-                                                                  withObjectClass:objectClass];
               
-              if (nil != success)
-                  success(objectsFromJSON);
+              [self performResultBlockInBackground:^id(){
+                  NSArray *objectsFromJSON = [[BWObjectMapper shared] objectsFromJSON:responseObject
+                                                                      withObjectClass:objectClass];
+                  return objectsFromJSON;
+                  
+              } completion:^(id result) {
+                  if (nil != success)
+                      success(result);
+              }];
               
           } failure:failure];
 }
@@ -153,12 +170,16 @@
     [self postPath:path
         parameters:[self paramsWithParams:params]
            success:^(AFHTTPRequestOperation *operation, id responseObject) {
-               id objectFromJSON = [[BWObjectMapper shared] objectFromJSON:responseObject
-                                                           withObjectClass:[object class]
-                                                            existingObject:object];
                
-               if (nil != success)
-                   success(objectFromJSON);
+               [self performResultBlockInBackground:^id{
+                   id objectFromJSON = [[BWObjectMapper shared] objectFromJSON:responseObject
+                                                               withObjectClass:[object class]
+                                                                existingObject:object];
+                   return objectFromJSON;
+               } completion:^(id result) {
+                   if (nil != success)
+                       success(result);
+               }];
                
            } failure:failure];
 }
@@ -196,12 +217,16 @@
     [self getPath:path
        parameters:[self params]
           success:^(AFHTTPRequestOperation *operation, id responseObject) {
-              id objectFromJSON = [[BWObjectMapper shared] objectFromJSON:responseObject
-                                                          withObjectClass:[object class]
-                                                           existingObject:object];
               
-              if (nil != success)
-                  success(objectFromJSON);
+              [self performResultBlockInBackground:^id{
+                  id objectFromJSON = [[BWObjectMapper shared] objectFromJSON:responseObject
+                                                              withObjectClass:[object class]
+                                                               existingObject:object];
+                  return objectFromJSON;
+              } completion:^(id result) {
+                  if (nil != success)
+                      success(result);
+              }];
               
           } failure:failure];
 }
@@ -220,12 +245,16 @@
     [self putPath:path
        parameters:[self paramsWithParams:params]
           success:^(AFHTTPRequestOperation *operation, id responseObject) {
-              id objectFromJSON = [[BWObjectMapper shared] objectFromJSON:responseObject
-                                                          withObjectClass:[object class]
-                                                           existingObject:object];
               
-              if (nil != success)
-                  success(objectFromJSON);
+              [self performResultBlockInBackground:^id{
+                  id objectFromJSON = [[BWObjectMapper shared] objectFromJSON:responseObject
+                                                              withObjectClass:[object class]
+                                                               existingObject:object];
+                  return objectFromJSON;
+              } completion:^(id result) {
+                  if (nil != success)
+                      success(result);
+              }];
               
           } failure:failure];
 }
@@ -297,6 +326,10 @@
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 - (NSString *)fullPath:(NSString *)path {
+    if (nil == [self path]) {
+        return path;
+    }
+    
     return [NSString stringWithFormat:@"%@%@", [self path], path];
 }
 
@@ -308,6 +341,21 @@
     [allParams addEntriesFromDictionary:[self params]];
     
     return allParams;
+}
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+- (void)performResultBlockInBackground:(BWAFResultReturnBlock)block completion:(BWAFResultBlock)completion {
+    dispatch_queue_t background_queue = parsing_operation_queue();
+    
+    dispatch_async(background_queue, ^{
+        id result = block();
+        
+        dispatch_async(dispatch_get_main_queue(), ^{
+            completion(result);
+        });
+
+    });
 }
 
 

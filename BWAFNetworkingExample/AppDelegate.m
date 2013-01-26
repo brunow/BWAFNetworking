@@ -142,7 +142,7 @@
                                     forMethod:BWObjectRouterMethodAllExceptPOST];
     
     [[BWObjectRouter shared] routeObjectClass:[List class]
-                               toResourcePath:@"/lists/"
+                               toResourcePath:@"/lists"
                                     forMethod:BWObjectRouterMethodINDEX];
     
     [[BWObjectRouter shared] routeObjectClass:[List class]
