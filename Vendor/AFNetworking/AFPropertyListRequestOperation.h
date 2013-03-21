@@ -41,7 +41,7 @@
 /**
  An object deserialized from a plist constructed using the response data.
  */
-@property (readonly, nonatomic, retain) id responsePropertyList;
+@property (readonly, nonatomic) id responsePropertyList;
 
 ///--------------------------------------
 /// @name Managing Property List Behavior
@@ -61,8 +61,8 @@
  
  @return A new property list request operation
  */
-+ (AFPropertyListRequestOperation *)propertyListRequestOperationWithRequest:(NSURLRequest *)urlRequest
-                                                                    success:(void (^)(NSURLRequest *request, NSHTTPURLResponse *response, id propertyList))success
-                                                                    failure:(void (^)(NSURLRequest *request, NSHTTPURLResponse *response, NSError *error, id propertyList))failure;
++ (instancetype)propertyListRequestOperationWithRequest:(NSURLRequest *)urlRequest
+												success:(void (^)(NSURLRequest *request, NSHTTPURLResponse *response, id propertyList))success
+												failure:(void (^)(NSURLRequest *request, NSHTTPURLResponse *response, NSError *error, id propertyList))failure;
 
 @end

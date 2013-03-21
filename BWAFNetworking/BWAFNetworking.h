@@ -19,15 +19,33 @@
 
 #import "AFNetworking.h"
 
+typedef id (^BWAFResultReturnBlock)(void);
+
+typedef void (^BWAFResultBlock)(id result);
+
 typedef void(^BWAFNetworkingAllObjectsSuccessBlock)(NSArray *objects);
 
 typedef void(^BWAFNetworkingObjectSuccessBlock)(id object);
 
 typedef void(^BWAFNetworkingSuccessDeleteObjectBlock)(id object);
 
+typedef void (^BWAFNetworkingProgressBlock)(NSUInteger bytesWritten, long long totalBytesWritten, long long totalBytesExpectedToWrite);
+
+typedef BOOL(^BWAFNetworkingIsRemoteObjectCreatedBlock)(id object);
+
+typedef enum {
+    BWAFNetworkingImageTypeJPEG,
+    BWAFNetworkingImageTypePNG
+} BWAFNetworkingImageType;
+
+
 @interface BWAFNetworking : AFHTTPClient
 
 @property (nonatomic, copy) BWAFNetworkingSuccessDeleteObjectBlock successDeleteBlock;
+@property (nonatomic, copy) BWAFNetworkingIsRemoteObjectCreatedBlock isRemoteObjectCreatedBlock;
+@property (nonatomic, assign) BWAFNetworkingImageType imageType;
+@property (nonatomic) float imageJPGQuality;
+@property (nonatomic, assign) BOOL performOperationInBackground;
 
 + (id)sharedClient;
 
@@ -73,6 +91,14 @@ typedef void(^BWAFNetworkingSuccessDeleteObjectBlock)(id object);
           success:(BWAFNetworkingObjectSuccessBlock)success
           failure:(void (^)(AFHTTPRequestOperation *operation, NSError *error))failure;
 
+- (void)saveObject:(id)object
+           success:(BWAFNetworkingObjectSuccessBlock)success
+           failure:(void (^)(AFHTTPRequestOperation *operation, NSError *error))failure;
+
 - (void)setSuccessDeleteBlock:(BWAFNetworkingSuccessDeleteObjectBlock)successDeleteBlock;
+
+- (void)setIsRemoteObjectCreatedBlock:(BWAFNetworkingIsRemoteObjectCreatedBlock)isRemoteObjectCreatedBlock;
+
+- (void)performResultBlockInBackground:(BWAFResultReturnBlock)block completion:(BWAFResultBlock)completion;
 
 @end

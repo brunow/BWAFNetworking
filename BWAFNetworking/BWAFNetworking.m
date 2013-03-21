@@ -21,9 +21,6 @@
 #import "BWObjectSerializer.h"
 #import "BWObjectMapper.h"
 
-typedef id (^BWAFResultReturnBlock)(void);
-typedef void (^BWAFResultBlock)(id result);
-
 static dispatch_queue_t bwaf_parsing_operation_queue;
 static dispatch_queue_t parsing_operation_queue() {
     if (bwaf_parsing_operation_queue == NULL) {
@@ -87,6 +84,9 @@ static dispatch_queue_t parsing_operation_queue() {
         [self registerHTTPOperationClass:[AFJSONRequestOperation class]];
         [self setDefaultHeader:@"Accept" value:@"application/json"];
         self.parameterEncoding = AFFormURLParameterEncoding;
+        self.imageType = BWAFNetworkingImageTypeJPEG;
+        self.imageJPGQuality = 0.85f;
+        self.performOperationInBackground = YES;
     }
     return self;
 }
@@ -146,6 +146,7 @@ static dispatch_queue_t parsing_operation_queue() {
               [self performResultBlockInBackground:^id(){
                   NSArray *objectsFromJSON = [[BWObjectMapper shared] objectsFromJSON:responseObject
                                                                       withObjectClass:objectClass];
+                  
                   return objectsFromJSON;
                   
               } completion:^(id result) {
@@ -261,6 +262,25 @@ static dispatch_queue_t parsing_operation_queue() {
 
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
+- (void)saveObject:(id)object
+           success:(BWAFNetworkingObjectSuccessBlock)success
+           failure:(void (^)(AFHTTPRequestOperation *operation, NSError *error))failure {
+    
+    NSAssert(nil != self.isRemoteObjectCreatedBlock, @"You must set isRemoteObjectCreatedBlock before using saveObject");
+    
+    if (nil != self.isRemoteObjectCreatedBlock) {
+        BOOL needPUT = self.isRemoteObjectCreatedBlock(object);
+        
+        if (needPUT) {
+            [self putObject:object success:success failure:failure];
+        } else {
+            [self postObject:object success:success failure:failure];
+        }
+    }
+}
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 #pragma mark -
 #pragma mark AFHTTPClient
@@ -272,10 +292,12 @@ static dispatch_queue_t parsing_operation_queue() {
         success:(void (^)(AFHTTPRequestOperation *operation, id responseObject))success
         failure:(void (^)(AFHTTPRequestOperation *operation, NSError *error))failure {
     
-    [super getPath:[self fullPath:path]
-        parameters:[self paramsWithParams:parameters]
-           success:success
-           failure:failure];
+    [self startRequestWithMethod:@"GET"
+                            path:path
+                      parameters:parameters
+                  uploadProgress:nil
+                         success:success
+                         failure:failure];
 }
 
 
@@ -285,10 +307,12 @@ static dispatch_queue_t parsing_operation_queue() {
          success:(void (^)(AFHTTPRequestOperation *operation, id responseObject))success
          failure:(void (^)(AFHTTPRequestOperation *operation, NSError *error))failure {
     
-    [super postPath:[self fullPath:path]
-         parameters:[self paramsWithParams:parameters]
-            success:success
-            failure:failure];
+    [self startRequestWithMethod:@"POST"
+                            path:path
+                      parameters:parameters
+                  uploadProgress:nil
+                         success:success
+                         failure:failure];
 }
 
 
@@ -298,10 +322,12 @@ static dispatch_queue_t parsing_operation_queue() {
         success:(void (^)(AFHTTPRequestOperation *operation, id responseObject))success
         failure:(void (^)(AFHTTPRequestOperation *operation, NSError *error))failure {
     
-    [super putPath:[self fullPath:path]
-        parameters:[self paramsWithParams:parameters]
-           success:success
-           failure:failure];
+    [self startRequestWithMethod:@"PUT"
+                            path:path
+                      parameters:parameters
+                  uploadProgress:nil
+                         success:success
+                         failure:failure];
 }
 
 
@@ -311,10 +337,53 @@ static dispatch_queue_t parsing_operation_queue() {
            success:(void (^)(AFHTTPRequestOperation *operation, id responseObject))success
            failure:(void (^)(AFHTTPRequestOperation *operation, NSError *error))failure {
     
-    [super deletePath:[self fullPath:path]
-           parameters:[self paramsWithParams:parameters]
-              success:success
-              failure:failure];
+    [self startRequestWithMethod:@"DELETE"
+                            path:path
+                      parameters:parameters
+                  uploadProgress:nil
+                         success:success
+                         failure:failure];
+}
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+- (void)startRequestWithMethod:(NSString *)method
+                          path:(NSString *)path
+                    parameters:(NSDictionary *)parameters
+                uploadProgress:(BWAFNetworkingProgressBlock)uploadProgress
+                       success:(void (^)(AFHTTPRequestOperation *operation, id responseObject))success
+                       failure:(void (^)(AFHTTPRequestOperation *operation, NSError *error))failure {
+    
+    NSMutableURLRequest *request = nil;
+    
+    path = [self fullPath:path];
+    NSMutableDictionary *mutableParameters = [[self paramsWithParams:parameters] mutableCopy];
+    NSMutableDictionary *formDatas = [self formDatasWithParameters:mutableParameters];
+    
+    if ([formDatas count] > 0 &&
+        ([method isEqualToString:@"PUT"] || [method isEqualToString:@"POST"])) {
+        
+        void(^formData)(id <AFMultipartFormData> formData) = ^(id <AFMultipartFormData> formData) {
+            [self constructFormDatas:formDatas formData:formData parentKey:nil];
+        };
+        
+        request = [self multipartFormRequestWithMethod:method
+                                                  path:path
+                                            parameters:mutableParameters
+                             constructingBodyWithBlock:formData];
+    } else {
+        request = [self requestWithMethod:method path:path parameters:mutableParameters];
+    }
+    
+	AFHTTPRequestOperation *operation = [self HTTPRequestOperationWithRequest:request
+                                                                      success:success
+                                                                      failure:failure];
+    
+    if (nil != uploadProgress) {
+        [operation setUploadProgressBlock:uploadProgress];
+    }
+    
+    [self enqueueHTTPRequestOperation:operation];
 }
 
 
@@ -323,6 +392,94 @@ static dispatch_queue_t parsing_operation_queue() {
 #pragma mark -
 #pragma mark Private
 
+////////////////////////////////////////////////////////////////////////////////////////////////////
+- (NSMutableDictionary *)formDatasWithParameters:(NSMutableDictionary *)parameters {
+    NSMutableDictionary *formData = [NSMutableDictionary dictionary];
+    NSMutableArray *keysToRemove = [NSMutableArray array];
+    NSMutableDictionary *newObjectsToAddToParameters = [NSMutableDictionary dictionary];
+    
+    [parameters enumerateKeysAndObjectsUsingBlock:^(id key, id obj, BOOL *stop) {
+        BOOL isSerialisableData = [self isSerialisableData:obj];
+        
+        if (NO == isSerialisableData) {
+            [formData setObject:obj forKey:key];
+            [keysToRemove addObject:key];
+            
+        } else if ([obj isKindOfClass:[NSDictionary class]]) {
+            NSMutableDictionary *newParams = [obj mutableCopy];
+            NSMutableDictionary *newFormData = [self formDatasWithParameters:newParams];
+            [formData setObject:newFormData forKey:key];
+            [newObjectsToAddToParameters setObject:newParams forKey:key];
+            
+        }
+    }];
+    
+    [parameters addEntriesFromDictionary:newObjectsToAddToParameters];
+    [parameters removeObjectsForKeys:keysToRemove];
+    
+    return formData;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+- (BOOL)isSerialisableData:(id)data {
+    if ([data isKindOfClass:[NSDictionary class]] ||
+        [data isKindOfClass:[NSString class]] ||
+        [data isKindOfClass:[NSNumber class]] ||
+        [data isKindOfClass:[NSDate class]] ||
+        [data isKindOfClass:[NSArray class]]) {
+        return YES;
+    }
+    
+    return NO;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+- (NSString *)extensionForImageType:(BWAFNetworkingImageType)type {
+    if (BWAFNetworkingImageTypeJPEG) {
+        return @"jpeg";
+    } else if (BWAFNetworkingImageTypePNG) {
+        return @"png";
+    }
+    
+    return nil;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+- (void)constructFormDatas:(NSDictionary *)formDatas
+                  formData:(id <AFMultipartFormData>)formData
+                 parentKey:(NSString *)parentKey {
+    
+    [formDatas enumerateKeysAndObjectsUsingBlock:^(NSString *key, id data, BOOL *stop) {
+        if ([data isKindOfClass:[UIImage class]]) {
+            NSData *imageData = nil;
+            
+            if (BWAFNetworkingImageTypeJPEG == self.imageType) {
+                imageData = UIImageJPEGRepresentation(data, self.imageJPGQuality);
+            } else if (BWAFNetworkingImageTypePNG == self.imageType) {
+                imageData = UIImagePNGRepresentation(data);
+            }
+            
+            NSString *completeKey = [NSString stringWithFormat:@"%@[%@]", parentKey, key];
+            
+            if (nil == parentKey)
+                completeKey = key;
+            
+            NSString *imageExtension = [self extensionForImageType:self.imageType];
+            
+            [formData appendPartWithFileData:imageData
+                                        name:completeKey
+                                    fileName:[NSString stringWithFormat:@"image.%@", imageExtension]
+                                    mimeType:[NSString stringWithFormat:@"image/%@", imageExtension]];
+        } else if ([data isKindOfClass:[NSDictionary class]]) {
+            NSString *completeKey = [NSString stringWithFormat:@"%@[%@]", parentKey, key];
+            
+            if (nil == parentKey)
+                completeKey = key;
+            
+            [self constructFormDatas:data formData:formData parentKey:completeKey];
+        }
+    }];
+}
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 - (NSString *)fullPath:(NSString *)path {
@@ -346,7 +503,8 @@ static dispatch_queue_t parsing_operation_queue() {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 - (void)performResultBlockInBackground:(BWAFResultReturnBlock)block completion:(BWAFResultBlock)completion {
-    dispatch_queue_t background_queue = parsing_operation_queue();
+    dispatch_queue_t background_queue = self.performOperationInBackground ?
+                                        parsing_operation_queue() : dispatch_get_main_queue();
     
     dispatch_async(background_queue, ^{
         id result = block();
@@ -354,7 +512,7 @@ static dispatch_queue_t parsing_operation_queue() {
         dispatch_async(dispatch_get_main_queue(), ^{
             completion(result);
         });
-
+        
     });
 }
 
